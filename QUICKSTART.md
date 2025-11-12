@@ -72,29 +72,44 @@ If you see errors, check:
 
 ## 4. Configure in Cursor
 
-1. Open Cursor Settings (Cmd/Ctrl + Shift + P → "Cursor Settings")
-2. Find MCP section and add:
+Edit `~/.cursor/mcp.json` (or create it if it doesn't exist):
 
 ```json
 {
   "mcpServers": {
     "postgres": {
-      "command": "poetry",
-      "args": ["run", "python", "mcp_server.py"],
-      "cwd": "/absolute/path/to/pgsql-mcp-server",
-      "env": {
-        "POSTGRES_CONNECTION_STRING": "postgresql://user:password@host:port/database"
-      }
+      "url": "http://localhost:8000/sse",
+      "transport": "sse"
     }
   }
 }
 ```
 
-**Important**: Replace `/absolute/path/to/pgsql-mcp-server` with the actual full path to this folder.
+**That's it!** This simple configuration works reliably without path issues.
 
-3. Restart Cursor
+## 5. Start the Server
 
-## 5. Try It Out!
+In a terminal, run:
+
+```bash
+cd /path/to/pgsql-mcp-server
+poetry run python mcp_server.py --http
+```
+
+You should see:
+```
+INFO:__main__:Starting PostgreSQL MCP Server...
+INFO:__main__:Running in HTTP mode on http://localhost:8000
+INFO:__main__:MCP endpoint: http://localhost:8000/sse
+```
+
+**Keep this terminal open** - the server needs to keep running.
+
+## 6. Restart Cursor
+
+Restart Cursor to pick up the new MCP configuration.
+
+## 7. Try It Out!
 
 Open Cursor's AI chat and ask:
 

@@ -213,9 +213,15 @@ The HTTP server will start on `http://localhost:8000` with the MCP endpoint at `
 
 You can configure Cursor to connect to the MCP server in two ways:
 
-#### Method 1: HTTP Transport (Recommended for Development)
+#### Recommended Method: HTTP Transport ✅
 
-**Advantages:** Easy to debug, see server logs, independent lifecycle
+**Why this works best:**
+- ✅ Simple configuration - no path issues
+- ✅ Easy to debug - see all server logs
+- ✅ Independent server - restart without restarting Cursor
+- ✅ Works reliably across all systems
+
+**Setup:**
 
 1. **Edit your Cursor MCP configuration** (`~/.cursor/mcp.json`):
 
@@ -232,17 +238,27 @@ You can configure Cursor to connect to the MCP server in two ways:
 
 2. **Start the server in HTTP mode** (in a separate terminal):
 ```bash
-cd /absolute/path/to/pgsql-mcp-server
+cd /path/to/pgsql-mcp-server
 poetry run python mcp_server.py --http
+```
+
+You should see:
+```
+INFO:__main__:Starting PostgreSQL MCP Server...
+INFO:__main__:Connection target: your-host:5432/your-database
+INFO:__main__:Running in HTTP mode on http://localhost:8000
+INFO:__main__:MCP endpoint: http://localhost:8000/sse
 ```
 
 3. **Restart Cursor**
 
-Keep the server running in the background. You'll see all logs and can easily restart it.
+4. **Keep the server running** - Don't close the terminal. You can see all logs in real-time.
 
-#### Method 2: stdio Transport (Auto-Launch)
+---
 
-**Advantages:** Automatic lifecycle management, no manual server start needed
+#### Alternative: stdio Transport (Auto-Launch)
+
+**Note:** This method can have path resolution issues on some systems. Use HTTP method above if you encounter problems.
 
 1. **Edit your Cursor MCP configuration** (`~/.cursor/mcp.json`):
 
@@ -261,11 +277,9 @@ Keep the server running in the background. You'll see all logs and can easily re
 }
 ```
 
-**Important:** Replace `/absolute/path/to/pgsql-mcp-server` with your actual path.
+**Important:** Replace `/absolute/path/to/pgsql-mcp-server` with your actual path (e.g., `/Users/username/Projects/pgsql-mcp-server/pgsql-mcp-server`).
 
 2. **Restart Cursor**
-
-Cursor will automatically launch and manage the server.
 
 ---
 
@@ -286,30 +300,40 @@ The AI will automatically:
 
 ### VS Code with GitHub Copilot Setup
 
-1. **Create or edit `.vscode/settings.json` in your project:**
+1. **Start the MCP server** (in a separate terminal):
+```bash
+cd /path/to/pgsql-mcp-server
+poetry run python mcp_server.py --http
+```
+
+2. **Create or edit `.vscode/settings.json` in your project:**
 
 ```json
 {
   "mcp.servers": {
     "postgres": {
-      "command": "poetry",
-      "args": ["run", "python", "mcp_server.py"],
-      "cwd": "/absolute/path/to/pgsql-mcp-server",
-      "env": {
-        "POSTGRES_CONNECTION_STRING": "postgresql://user:password@host:port/database"
-      }
+      "url": "http://localhost:8000/sse",
+      "transport": "sse"
     }
   }
 }
 ```
 
-2. **Reload VS Code**
+3. **Reload VS Code**
 
-3. **Use Copilot Chat** to query your database in natural language
+4. **Use Copilot Chat** to query your database in natural language
+
+**Keep the server running** in the background to maintain the connection.
 
 ### Claude Desktop Setup
 
-1. **Edit Claude Desktop configuration:**
+1. **Start the MCP server** (in a separate terminal):
+```bash
+cd /path/to/pgsql-mcp-server
+poetry run python mcp_server.py --http
+```
+
+2. **Edit Claude Desktop configuration:**
 
 On macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
@@ -319,22 +343,27 @@ On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 {
   "mcpServers": {
     "postgres": {
-      "command": "poetry",
-      "args": ["run", "python", "mcp_server.py"],
-      "cwd": "/absolute/path/to/pgsql-mcp-server",
-      "env": {
-        "POSTGRES_CONNECTION_STRING": "postgresql://user:password@host:port/database"
-      }
+      "url": "http://localhost:8000/sse",
+      "transport": "sse"
     }
   }
 }
 ```
 
-2. **Restart Claude Desktop**
+3. **Restart Claude Desktop**
+
+**Keep the server running** in the background - Claude will connect to it automatically.
 
 ### Using with LangGraph Agents
 
 You can also use this server programmatically:
+
+1. **Start the MCP server**:
+```bash
+poetry run python mcp_server.py --http
+```
+
+2. **Use in your Python code**:
 
 ```python
 import asyncio
@@ -343,11 +372,11 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 async def main():
-    # Connect to the MCP server
+    # Connect to the MCP server (HTTP transport)
     client = MultiServerMCPClient({
         "postgres": {
-            "url": "http://localhost:8000/mcp",
-            "transport": "streamable_http",
+            "url": "http://localhost:8000/sse",
+            "transport": "sse",
         },
     })
     
