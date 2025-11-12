@@ -2,8 +2,9 @@
 name = "pgsql-mcp-server"
 version = "1.0.0"
 description = "A generic, reusable PostgreSQL MCP server for AI agents"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Deb Adarsh <debadarsh7@gmail.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"

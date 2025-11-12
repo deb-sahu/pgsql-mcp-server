@@ -4,7 +4,12 @@ Get your PostgreSQL MCP server up and running in 5 minutes!
 
 ## 1. Install Dependencies
 
+**Note**: Python 3.10-3.13 required (NOT 3.14)
+
 ```bash
+# If you have Python 3.14, use 3.12 instead
+poetry env use python3.12
+
 poetry install
 ```
 
@@ -19,30 +24,51 @@ cp env.example .env
 Edit `.env` and add your database connection:
 
 ```env
-# Simple connection string (recommended)
+# PostgreSQL URL format (recommended)
 POSTGRES_CONNECTION_STRING=postgresql://user:password@host:port/database
 
-# OR individual parameters
-DB_USER_NAME=your_user
-DB_PASSWORD=your_password
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=your_database
+# For Azure PostgreSQL with SSL
+POSTGRES_CONNECTION_STRING=postgresql://user:password@server.postgres.database.azure.com:5432/database?sslmode=require
 ```
 
-## 3. Test the Server
+### ⚠️ Special Characters in Passwords
+
+If your password has special characters, **URL-encode them**:
+
+```env
+# Password: pass#word123  →  pass%23word123
+# Password: p@ss+word     →  p%40ss%2Bword
+
+POSTGRES_CONNECTION_STRING=postgresql://user:pass%23word123@host:5432/db
+```
+
+Common encodings: `#` → `%23`, `@` → `%40`, `+` → `%2B`, `/` → `%2F`
+
+## 3. Test the Connection
+
+**Before configuring your client, test the connection:**
 
 ```bash
-poetry run python mcp_server.py
+poetry run python test_connection.py
 ```
 
 You should see:
 ```
-PostgreSQL MCP Server started successfully
-Connected to database: host:port
+Testing connection to: postgresql://user:****@host:5432/database
+
+Connecting to database...
+[OK] Connected successfully!
+
+Database: your_database
+Version: PostgreSQL 16.x on ...
+
+[SUCCESS] All connection tests passed!
 ```
 
-Press Ctrl+C to stop.
+If you see errors, check:
+- Connection string format (must be `postgresql://...`)
+- Special characters are URL-encoded
+- Database is accessible from your machine
 
 ## 4. Configure in Cursor
 
@@ -93,10 +119,14 @@ Your AI client now has access to 5 database tools:
 
 ## Troubleshooting
 
-**"Failed to initialize database pool"**
-- Check your database credentials in `.env`
-- Make sure PostgreSQL is running
-- Test connection: `psql "your_connection_string"`
+**"Failed to initialize database pool" or "invalid literal for int()"**
+- **Wrong format**: Use `postgresql://user:password@host:port/db` NOT `.NET format`
+- **Special characters**: URL-encode them (e.g., `#` → `%23`)
+- **Test connection**: Run `poetry run python test_connection.py`
+- **Verify manually**: `psql "postgresql://user:password@host:port/db"`
+
+**"Python 3.14 is newer than PyO3's maximum supported version"**
+- Use Python 3.12: `poetry env use python3.12 && poetry install`
 
 **"No tools available"**
 - Verify the `cwd` path is absolute (not relative)

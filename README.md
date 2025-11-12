@@ -85,8 +85,8 @@ Execute a SQL query with safety features:
 ## 🛠️ Installation
 
 ### Prerequisites
-- Python 3.10 or higher
-- PostgreSQL database
+- Python 3.10, 3.11, 3.12, or 3.13 (NOT 3.14 - dependencies not yet compatible)
+- PostgreSQL database (local or cloud)
 - Poetry (for dependency management)
 
 ### Setup
@@ -99,6 +99,9 @@ cd pgsql-mcp-server
 
 2. **Install dependencies:**
 ```bash
+# If you have Python 3.14, use Python 3.12 instead
+poetry env use python3.12  # or python3.11, python3.10
+
 poetry install
 ```
 
@@ -124,27 +127,124 @@ DB_NAME=your_database
 POSTGRES_CONNECTION_STRING=postgresql://user:password@host:port/database
 ```
 
+### ⚠️ Important: Connection String Format
+
+The connection string must be in **PostgreSQL URL format**:
+
+```
+postgresql://username:password@host:port/database
+```
+
+#### For Azure PostgreSQL with SSL:
+```env
+POSTGRES_CONNECTION_STRING=postgresql://user:password@server.postgres.database.azure.com:5432/database?sslmode=require
+```
+
+#### Special Characters in Passwords
+
+If your password contains special characters, you **must** URL-encode them:
+
+| Character | Encoded | Character | Encoded |
+|-----------|---------|-----------|---------|
+| `#`       | `%23`   | `@`       | `%40`   |
+| `%`       | `%25`   | `&`       | `%26`   |
+| `+`       | `%2B`   | `/`       | `%2F`   |
+| `?`       | `%3F`   | `=`       | `%3D`   |
+| `:` (in pwd)| `%3A` | ` ` (space)| `%20`  |
+
+**Example:**
+```env
+# Original password: qA5m#6fMk
+# Encoded password:  qA5m%236fMk
+
+POSTGRES_CONNECTION_STRING=postgresql://myuser:qA5m%236fMk@host:5432/mydb
+```
+
+### 5. Test Your Connection
+
+Run the connection test to verify everything works:
+
+```bash
+poetry run python test_connection.py
+```
+
+**Expected output:**
+```
+Testing connection to: postgresql://user:****@host:5432/database
+
+Connecting to database...
+[OK] Connected successfully!
+
+Database: your_database
+Version: PostgreSQL 16.x on ...
+
+Testing table listing...
+[OK] Found 5 tables (showing first 5):
+  - schema.table1
+  - schema.table2
+  ...
+
+[SUCCESS] All connection tests passed!
+```
+
 **That's it!** No API keys needed - your AI client handles the rest.
 
 ## 🎯 Usage
 
-### Running the Server Standalone
+### Running the Server
 
+The server supports two transport modes:
+
+**stdio mode (default)** - For direct MCP client integration:
 ```bash
 poetry run python mcp_server.py
 ```
 
-The server will start on `http://localhost:8000` by default.
+**HTTP mode** - For standalone server (recommended for development):
+```bash
+poetry run python mcp_server.py --http
+```
+
+The HTTP server will start on `http://localhost:8000` with the MCP endpoint at `http://localhost:8000/sse`.
 
 ## 🔌 Client Integration
 
 ### Cursor IDE Setup
 
-1. **Open Cursor Settings** (Cmd/Ctrl + Shift + P → "Cursor Settings")
+You can configure Cursor to connect to the MCP server in two ways:
 
-2. **Find the MCP section** and add this configuration:
+#### Method 1: HTTP Transport (Recommended for Development)
 
-**Method 1 - Local execution (recommended):**
+**Advantages:** Easy to debug, see server logs, independent lifecycle
+
+1. **Edit your Cursor MCP configuration** (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "url": "http://localhost:8000/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+2. **Start the server in HTTP mode** (in a separate terminal):
+```bash
+cd /absolute/path/to/pgsql-mcp-server
+poetry run python mcp_server.py --http
+```
+
+3. **Restart Cursor**
+
+Keep the server running in the background. You'll see all logs and can easily restart it.
+
+#### Method 2: stdio Transport (Auto-Launch)
+
+**Advantages:** Automatic lifecycle management, no manual server start needed
+
+1. **Edit your Cursor MCP configuration** (`~/.cursor/mcp.json`):
 
 ```json
 {
@@ -161,30 +261,17 @@ The server will start on `http://localhost:8000` by default.
 }
 ```
 
-**Method 2 - HTTP transport (for remote servers):**
+**Important:** Replace `/absolute/path/to/pgsql-mcp-server` with your actual path.
 
-First, start the server:
-```bash
-poetry run python mcp_server.py
-```
+2. **Restart Cursor**
 
-Then configure in Cursor:
-```json
-{
-  "mcpServers": {
-    "postgres": {
-      "url": "http://localhost:8000/mcp",
-      "transport": "streamable_http"
-    }
-  }
-}
-```
+Cursor will automatically launch and manage the server.
 
-3. **Restart Cursor**
+---
 
-4. **Test the integration:**
+**Test the integration:**
    
-   Open Cursor's AI chat and try:
+Open Cursor's AI chat and try:
    
    - "Show me all tables in the database"
    - "What's the schema of the users table?"
@@ -346,27 +433,65 @@ pgsql-mcp-server/
 
 ### Connection Issues
 
-**Problem**: "Failed to initialize database pool"
+**Problem**: "Failed to initialize database pool" or "invalid literal for int()"
 
 **Solution**:
-- Verify your database credentials
-- Check if PostgreSQL is running
-- Ensure the host/port are accessible
-- Test connection string manually:
-  ```bash
-  psql "postgresql://user:password@host:port/database"
-  ```
+1. **Check connection string format** - Must be: `postgresql://user:password@host:port/database`
+   - NOT .NET format with semicolons: `Host=...;Database=...`
+   
+2. **URL-encode special characters in password**:
+   ```bash
+   # Wrong: password with # character
+   POSTGRES_CONNECTION_STRING=postgresql://user:pass#word@host:5432/db
+   
+   # Correct: # encoded as %23
+   POSTGRES_CONNECTION_STRING=postgresql://user:pass%23word@host:5432/db
+   ```
+
+3. **Test the connection**:
+   ```bash
+   poetry run python test_connection.py
+   ```
+
+4. **Verify credentials manually**:
+   ```bash
+   psql "postgresql://user:password@host:port/database"
+   ```
+
+5. **For Azure PostgreSQL**, add `?sslmode=require`:
+   ```env
+   POSTGRES_CONNECTION_STRING=postgresql://user:password@server.postgres.database.azure.com:5432/db?sslmode=require
+   ```
+
+**Problem**: "Python 3.14 is newer than PyO3's maximum supported version"
+
+**Solution**:
+```bash
+# Use Python 3.12 instead
+poetry env use python3.12
+poetry install
+```
 
 ### MCP Client Not Finding Tools
 
 **Problem**: Client says "No tools available"
 
 **Solution**:
-- Check the server is running
-- Verify the path in MCP configuration is absolute
-- Check environment variables are set correctly
-- Look at the server logs for errors
-- Restart the MCP client
+
+**For HTTP transport:**
+- Make sure server is running: `poetry run python mcp_server.py --http`
+- Check the URL in mcp.json: `http://localhost:8000/sse`
+- Verify the server is accessible: Open `http://localhost:8000/sse` in browser
+- Check server logs for errors
+
+**For stdio transport:**
+- Verify the `cwd` path in mcp.json is absolute (not relative)
+- Check environment variables are set correctly in mcp.json
+- Look at Cursor's logs for server startup errors
+
+**Both:**
+- Restart the MCP client (Cursor/VS Code)
+- Test connection: `poetry run python test_connection.py`
 
 ### Queries Not Working
 

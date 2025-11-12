@@ -53,26 +53,32 @@ pg_tools = PostgresTools(db_manager)
 
 class GetTablesRequest(BaseModel):
     """Request model for getting database tables."""
-    schema: Optional[str] = Field(
+    schema_name: Optional[str] = Field(
         None,
+        alias="schema",
         description="Optional schema name to filter tables. If not provided, returns tables from all user schemas."
     )
     include_views: bool = Field(
         False,
         description="Whether to include views in the results"
     )
+    
+    model_config = {"populate_by_name": True}
 
 
 class GetRoutinesRequest(BaseModel):
     """Request model for getting database routines and functions."""
-    schema: Optional[str] = Field(
+    schema_name: Optional[str] = Field(
         None,
+        alias="schema",
         description="Optional schema name to filter functions"
     )
     function_name_pattern: Optional[str] = Field(
         None,
         description="Optional pattern to filter function names (SQL LIKE pattern, e.g., 'calculate%')"
     )
+    
+    model_config = {"populate_by_name": True}
 
 
 class GetTableSchemaRequest(BaseModel):
@@ -81,10 +87,13 @@ class GetTableSchemaRequest(BaseModel):
         ...,
         description="Name of the table to get schema information for"
     )
-    schema: str = Field(
+    schema_name: str = Field(
         "public",
+        alias="schema",
         description="Schema name (defaults to 'public')"
     )
+    
+    model_config = {"populate_by_name": True}
 
 
 class ExecuteQueryRequest(BaseModel):
@@ -119,7 +128,7 @@ async def get_tables(req: GetTablesRequest) -> str:
     """
     try:
         result = await pg_tools.get_tables(
-            schema=req.schema,
+            schema=req.schema_name,
             include_views=req.include_views
         )
         
@@ -156,7 +165,7 @@ async def get_routines_and_functions(req: GetRoutinesRequest) -> str:
     """
     try:
         result = await pg_tools.get_routines_and_functions(
-            schema=req.schema,
+            schema=req.schema_name,
             function_name_pattern=req.function_name_pattern
         )
         
@@ -225,7 +234,7 @@ async def get_table_schema(req: GetTableSchemaRequest) -> str:
     try:
         result = await pg_tools.get_table_schema(
             table_name=req.table_name,
-            schema=req.schema
+            schema=req.schema_name
         )
         
         import json
@@ -283,37 +292,26 @@ async def execute_query(req: ExecuteQueryRequest) -> str:
 
 
 # ============================================================================
-# Server Lifecycle Management
-# ============================================================================
-
-@mcp.on_startup()
-async def startup():
-    """Initialize database connection pool on server startup."""
-    try:
-        await db_manager.initialize_pool()
-        logger.info("PostgreSQL MCP Server started successfully")
-        logger.info(f"Connected to database: {DB_CONNECTION_STRING.split('@')[1] if '@' in DB_CONNECTION_STRING else 'local'}")
-    except Exception as e:
-        logger.error(f"Failed to start PostgreSQL MCP Server: {str(e)}")
-        raise
-
-
-@mcp.on_shutdown()
-async def shutdown():
-    """Close database connection pool on server shutdown."""
-    try:
-        await db_manager.close_pool()
-        logger.info("PostgreSQL MCP Server shut down successfully")
-    except Exception as e:
-        logger.error(f"Error during shutdown: {str(e)}")
-
-
-# ============================================================================
 # Server Entry Point
 # ============================================================================
 
 if __name__ == "__main__":
-    # Run the MCP server with streamable HTTP transport
-    # This allows the server to work with any MCP client
-    mcp.run(transport="streamable-http")
+    import sys
+    
+    logger.info("Starting PostgreSQL MCP Server...")
+    logger.info(f"Connection target: {DB_CONNECTION_STRING.split('@')[1] if '@' in DB_CONNECTION_STRING else 'configured'}")
+    
+    # Support both stdio and HTTP transports
+    # Use HTTP if --http flag is provided, otherwise use stdio
+    transport = "sse" if "--http" in sys.argv else "stdio"
+    
+    if transport == "sse":
+        logger.info("Running in HTTP mode on http://localhost:8000")
+        logger.info("MCP endpoint: http://localhost:8000/sse")
+    else:
+        logger.info("Running in stdio mode (for direct MCP client integration)")
+    
+    # Run the MCP server - FastMCP handles its own lifecycle
+    # Database connection pool will be initialized on first use
+    mcp.run(transport=transport)
 
