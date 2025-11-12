@@ -1,5 +1,12 @@
 # PostgreSQL MCP Server - Project Summary
 
+> ### ⚠️ IMPORTANT: Python Version
+> **If you have Python 3.14, switch to 3.12 first:**
+> ```bash
+> poetry env use python3.12
+> ```
+> The `asyncpg` library doesn't support Python 3.14 yet.
+
 ## What This Is
 
 A clean, generic, reusable PostgreSQL MCP (Model Context Protocol) server that works with any AI client (Cursor, VS Code, Claude Desktop, etc.) without requiring separate API keys.

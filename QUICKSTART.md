@@ -2,14 +2,17 @@
 
 Get your PostgreSQL MCP server up and running in 5 minutes!
 
+> ### ⚠️ IMPORTANT: If you have Python 3.14, switch to 3.12 first
+> ```bash
+> poetry env use python3.12
+> ```
+> The `asyncpg` library doesn't support Python 3.14 yet.
+
 ## 1. Install Dependencies
 
-**Note**: Python 3.10-3.13 required (NOT 3.14)
+**Required**: Python 3.10, 3.11, 3.12, or 3.13 (**NOT 3.14**)
 
 ```bash
-# If you have Python 3.14, use 3.12 instead
-poetry env use python3.12
-
 poetry install
 ```
 

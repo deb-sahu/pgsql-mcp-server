@@ -84,8 +84,15 @@ Execute a SQL query with safety features:
 
 ## 🛠️ Installation
 
+> ### ⚠️ IMPORTANT: Python Version Requirement
+> **If you have Python 3.14, switch to 3.12 first:**
+> ```bash
+> poetry env use python3.12
+> ```
+> The `asyncpg` and `pydantic-core` libraries don't support Python 3.14 yet.
+
 ### Prerequisites
-- Python 3.10, 3.11, 3.12, or 3.13 (NOT 3.14 - dependencies not yet compatible)
+- Python 3.10, 3.11, 3.12, or 3.13 (**NOT 3.14**)
 - PostgreSQL database (local or cloud)
 - Poetry (for dependency management)
 
