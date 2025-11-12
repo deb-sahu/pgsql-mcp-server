@@ -324,9 +324,14 @@ pgsql-mcp-server/
 ├── env.example                  # Example environment configuration
 ├── pyproject.toml               # Poetry dependencies
 ├── poetry.lock                  # Locked dependencies
-├── README.md                    # This file
-├── QUICKSTART.md                # Quick start guide
-└── PROJECT_SUMMARY.md           # Project overview
+├── .gitignore                   # Git ignore rules
+├── README.md                    # This file (comprehensive docs)
+├── QUICKSTART.md                # Quick start guide (5 min setup)
+├── PROJECT_SUMMARY.md           # Project overview
+├── CHANGELOG.md                 # Version history & changes
+├── CODE_OF_CONDUCT.md           # Community guidelines
+├── LICENSE.md                   # MIT License
+└── REVIEW.md                    # Code review & quality assessment
 ```
 
 ## 🔒 Security Considerations
@@ -382,11 +387,17 @@ pgsql-mcp-server/
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please:
+
+1. Read our [Code of Conduct](CODE_OF_CONDUCT.md)
+2. Fork the repository
+3. Create a feature branch
+4. Make your changes
+5. Submit a Pull Request
 
 ## 📄 License
 
-MIT License - feel free to use this in your projects!
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
 
 ## 🙏 Acknowledgments
 
@@ -397,4 +408,4 @@ Built with:
 
 ---
 
-**Query your PostgreSQL database with natural language - no API keys required!** 🚀
+**Query your PostgreSQL database with natural language through your AI client!** 🚀
