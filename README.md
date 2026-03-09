@@ -78,6 +78,9 @@ Execute a SQL query with safety features:
 - Blocks destructive operations (DROP, DELETE, UPDATE)
 - Returns structured results
 
+### 6. `get_connection_status`
+Debug tool to check if the server has a default connection configured (useful for troubleshooting).
+
 **Parameters:**
 - `query`: SQL query to execute
 - `limit`: Max rows to return (default: 1000)

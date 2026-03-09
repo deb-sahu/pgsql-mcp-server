@@ -1,9 +1,9 @@
 """
 Generic PostgreSQL MCP Server
 
-A reusable Model Context Protocol (MCP) server for PostgreSQL databases.
-This server provides tools for querying, exploring, and analyzing PostgreSQL databases
-through a standardized MCP interface.
+Enterprise-grade Model Context Protocol (MCP) server for PostgreSQL databases.
+This server provides intelligent database tools for querying, exploring, and analyzing 
+PostgreSQL databases through a standardized MCP interface.
 
 The server accepts a database connection string as a configurable property,
 making it compatible with any MCP client (Cursor, VS Code Agent, etc.).
@@ -16,10 +16,11 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 from typing import Optional
 import logging
+import os
 
 from db_connection import PostgresConnectionManager
 from pg_tools import PostgresTools
-from config import app_settings, _ENV_FILE_PATH
+from config import app_settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,58 +29,24 @@ logger = logging.getLogger(__name__)
 # Initialize MCP server
 mcp = FastMCP("postgres-mcp-server")
 
-
-def _build_connection_string() -> str:
-    """
-    Build the database connection string from configuration.
-    
-    The .env file is automatically loaded from the MCP server's directory.
-    
-    Priority order:
-    1. POSTGRES_CONNECTION_STRING from .env (full connection URL)
-    2. DATABASE_URL from .env (common in cloud platforms)
-    3. Individual DB_* components from .env (db_user_name, db_password, etc.)
-    """
-    # Check if .env file exists
-    if not _ENV_FILE_PATH.exists():
-        logger.error(f"Configuration file not found: {_ENV_FILE_PATH}")
-        logger.error("Please create a .env file with your database connection settings.")
-        return ""
-    
-    # First, check if a full connection string is provided
-    if app_settings.effective_connection_string:
-        logger.info("Using connection string from .env file")
-        return app_settings.effective_connection_string
-    
-    # Fall back to building from individual components
-    if app_settings.db_user_name and app_settings.db_name:
-        logger.info("Building connection string from individual DB_* components in .env")
-        return (
-            f"postgresql://{app_settings.db_user_name}:{app_settings.db_password}"
-            f"@{app_settings.db_host}:{app_settings.db_port}/{app_settings.db_name}"
-        )
-    
-    # No configuration found
-    logger.error(
-        f"No database connection configured in {_ENV_FILE_PATH}. "
-        "Set POSTGRES_CONNECTION_STRING, DATABASE_URL, or individual DB_* variables."
-    )
-    return ""
-
-
-# Initialize database connection at startup
-DB_CONNECTION_STRING = _build_connection_string()
-
-db_manager = PostgresConnectionManager(DB_CONNECTION_STRING)
-pg_tools = PostgresTools(db_manager)
+# Multi-tenant mode: Each client provides their own connection string
+# Connection string is passed via environment variable in the MCP client configuration
 
 
 # ============================================================================
 # MCP Tool Request Models
 # ============================================================================
 
+# Connection string field description - tells AI to use POSTGRES_CONNECTION_STRING from mcp.json
+CONNECTION_STRING_DESC = "PostgreSQL connection URL. IMPORTANT: Use the POSTGRES_CONNECTION_STRING value from your mcp.json env configuration. Format: postgresql://user:password@host:port/database"
+
+
 class GetTablesRequest(BaseModel):
     """Request model for getting database tables."""
+    connection_string: str = Field(
+        ...,
+        description=CONNECTION_STRING_DESC
+    )
     schema_name: Optional[str] = Field(
         None,
         alias="schema",
@@ -95,6 +62,10 @@ class GetTablesRequest(BaseModel):
 
 class GetRoutinesRequest(BaseModel):
     """Request model for getting database routines and functions."""
+    connection_string: str = Field(
+        ...,
+        description=CONNECTION_STRING_DESC
+    )
     schema_name: Optional[str] = Field(
         None,
         alias="schema",
@@ -110,6 +81,10 @@ class GetRoutinesRequest(BaseModel):
 
 class GetTableSchemaRequest(BaseModel):
     """Request model for getting detailed table schema."""
+    connection_string: str = Field(
+        ...,
+        description=CONNECTION_STRING_DESC
+    )
     table_name: str = Field(
         ...,
         description="Name of the table to get schema information for"
@@ -125,6 +100,10 @@ class GetTableSchemaRequest(BaseModel):
 
 class ExecuteQueryRequest(BaseModel):
     """Request model for executing SQL queries."""
+    connection_string: str = Field(
+        ...,
+        description=CONNECTION_STRING_DESC
+    )
     query: str = Field(
         ...,
         description="SQL query to execute (read-only queries recommended)"
@@ -140,6 +119,41 @@ class ExecuteQueryRequest(BaseModel):
 # ============================================================================
 
 @mcp.tool()
+async def get_connection_status() -> str:
+    """
+    Check the MCP server status and connection configuration guidance.
+    
+    Returns information about how to configure your database connection.
+    
+    For SSE/HTTP mode (Kubernetes deployment), you should configure 
+    POSTGRES_CONNECTION_STRING in your mcp.json env block. The AI will 
+    automatically use this value for all database operations.
+    
+    This is a diagnostic tool - use it to verify the server is running.
+    """
+    import json
+    return json.dumps({
+        "server_status": "running",
+        "mode": "multi-tenant",
+        "configuration_guide": {
+            "step_1": "Add POSTGRES_CONNECTION_STRING to your mcp.json env block",
+            "step_2": "Format: postgresql://user:password@host:port/database",
+            "step_3": "The AI will automatically use this value for all tools"
+        },
+        "example_config": {
+            "mcpServers": {
+                "stardom-postgres": {
+                    "url": "https://stardom-pgsql-mcp-dev.maersk-digital.net/sse",
+                    "env": {
+                        "POSTGRES_CONNECTION_STRING": "postgresql://user:password@host:5432/database"
+                    }
+                }
+            }
+        }
+    }, indent=2)
+
+
+@mcp.tool()
 async def get_tables(req: GetTablesRequest) -> str:
     """
     Fetch and return a list of all table names in the PostgreSQL database.
@@ -151,9 +165,17 @@ async def get_tables(req: GetTablesRequest) -> str:
     - Primary key columns
     - Table size
     
+    IMPORTANT: For connection_string, use the POSTGRES_CONNECTION_STRING value from the 
+    mcp.json env configuration. The AI should automatically use this value.
+    
     Returns structured JSON with success status, data, and error information.
     """
+    db_manager = None
     try:
+        # Create per-client database connection
+        db_manager = PostgresConnectionManager(req.connection_string)
+        pg_tools = PostgresTools(db_manager)
+        
         result = await pg_tools.get_tables(
             schema=req.schema_name,
             include_views=req.include_views
@@ -172,6 +194,10 @@ async def get_tables(req: GetTablesRequest) -> str:
             "count": 0,
             "error": str(e)
         }, indent=2)
+    
+    finally:
+        if db_manager:
+            await db_manager.close_pool()
 
 
 @mcp.tool()
@@ -188,9 +214,17 @@ async def get_routines_and_functions(req: GetRoutinesRequest) -> str:
     - Language (plpgsql, sql, etc.)
     - Complete function definition
     
+    IMPORTANT: For connection_string, use the POSTGRES_CONNECTION_STRING value from the 
+    mcp.json env configuration. The AI should automatically use this value.
+    
     Returns structured JSON with success status, data, and error information.
     """
+    db_manager = None
     try:
+        # Create per-client database connection
+        db_manager = PostgresConnectionManager(req.connection_string)
+        pg_tools = PostgresTools(db_manager)
+        
         result = await pg_tools.get_routines_and_functions(
             schema=req.schema_name,
             function_name_pattern=req.function_name_pattern
@@ -208,10 +242,22 @@ async def get_routines_and_functions(req: GetRoutinesRequest) -> str:
             "count": 0,
             "error": str(e)
         }, indent=2)
+    
+    finally:
+        if db_manager:
+            await db_manager.close_pool()
+
+
+class GetDatabaseSchemaSummaryRequest(BaseModel):
+    """Request model for getting database schema summary."""
+    connection_string: str = Field(
+        ...,
+        description=CONNECTION_STRING_DESC
+    )
 
 
 @mcp.tool()
-async def get_database_schema_summary() -> str:
+async def get_database_schema_summary(req: GetDatabaseSchemaSummaryRequest) -> str:
     """
     Get a comprehensive summary of the entire database schema.
     
@@ -226,9 +272,17 @@ async def get_database_schema_summary() -> str:
     and how tables relate to each other. The AI client can then use this
     context to generate appropriate SQL queries.
     
+    IMPORTANT: For connection_string, use the POSTGRES_CONNECTION_STRING value from the 
+    mcp.json env configuration. The AI should automatically use this value.
+    
     Returns structured JSON with complete database schema information.
     """
+    db_manager = None
     try:
+        # Create per-client database connection
+        db_manager = PostgresConnectionManager(req.connection_string)
+        pg_tools = PostgresTools(db_manager)
+        
         result = await pg_tools.get_database_schema_summary()
         
         import json
@@ -242,6 +296,10 @@ async def get_database_schema_summary() -> str:
             "data": {},
             "error": str(e)
         }, indent=2)
+    
+    finally:
+        if db_manager:
+            await db_manager.close_pool()
 
 
 @mcp.tool()
@@ -256,9 +314,17 @@ async def get_table_schema(req: GetTableSchemaRequest) -> str:
     
     Useful for understanding table structure before writing queries.
     
+    IMPORTANT: For connection_string, use the POSTGRES_CONNECTION_STRING value from the 
+    mcp.json env configuration. The AI should automatically use this value.
+    
     Returns structured JSON with success status, data, and error information.
     """
+    db_manager = None
     try:
+        # Create per-client database connection
+        db_manager = PostgresConnectionManager(req.connection_string)
+        pg_tools = PostgresTools(db_manager)
+        
         result = await pg_tools.get_table_schema(
             table_name=req.table_name,
             schema=req.schema_name
@@ -275,6 +341,10 @@ async def get_table_schema(req: GetTableSchemaRequest) -> str:
             "data": {},
             "error": str(e)
         }, indent=2)
+    
+    finally:
+        if db_manager:
+            await db_manager.close_pool()
 
 
 @mcp.tool()
@@ -292,13 +362,21 @@ async def execute_query(req: ExecuteQueryRequest) -> str:
     2. Generate the appropriate SQL query based on the user's request
     3. Use this tool to execute the query and get results
     
+    IMPORTANT: For connection_string, use the POSTGRES_CONNECTION_STRING value from the 
+    mcp.json env configuration. The AI should automatically use this value.
+    
     Returns structured JSON with:
     - success: bool
     - data: Query results
     - row_count: Number of rows
     - error: Optional error message
     """
+    db_manager = None
     try:
+        # Create per-client database connection
+        db_manager = PostgresConnectionManager(req.connection_string)
+        pg_tools = PostgresTools(db_manager)
+        
         result = await pg_tools.execute_query(
             query=req.query,
             limit=req.limit
@@ -316,6 +394,10 @@ async def execute_query(req: ExecuteQueryRequest) -> str:
             "row_count": 0,
             "error": str(e)
         }, indent=2)
+    
+    finally:
+        if db_manager:
+            await db_manager.close_pool()
 
 
 # ============================================================================
@@ -324,21 +406,47 @@ async def execute_query(req: ExecuteQueryRequest) -> str:
 
 if __name__ == "__main__":
     import sys
+    import os
     
-    logger.info("Starting PostgreSQL MCP Server...")
-    logger.info(f"Connection target: {DB_CONNECTION_STRING.split('@')[1] if '@' in DB_CONNECTION_STRING else 'configured'}")
+    logger.info("Starting Stardom PostgreSQL MCP Server (Multi-Tenant Mode)...")
+    logger.info("Users will provide their own database connection strings")
     
     # Support both stdio and HTTP transports
     # Use HTTP if --http flag is provided, otherwise use stdio
     transport = "sse" if "--http" in sys.argv else "stdio"
     
     if transport == "sse":
-        logger.info("Running in HTTP mode on http://localhost:8000")
-        logger.info("MCP endpoint: http://localhost:8000/sse")
+        logger.info(f"Running in HTTP mode on http://{app_settings.mcp_server_host}:{app_settings.mcp_server_port}")
+        logger.info(f"MCP endpoint: http://{app_settings.mcp_server_host}:{app_settings.mcp_server_port}/sse")
+        
+        # Monkey patch uvicorn.Config to force host/port binding
+        import uvicorn
+        original_config_init = uvicorn.Config.__init__
+        
+        def patched_config_init(self, *args, **kwargs):
+            # Force host and port regardless of what was passed
+            kwargs['host'] = app_settings.mcp_server_host
+            kwargs['port'] = app_settings.mcp_server_port
+            return original_config_init(self, *args, **kwargs)
+        
+        uvicorn.Config.__init__ = patched_config_init
+        
+        # Monkey patch TransportSecurityMiddleware to disable DNS rebinding protection
+        # This is required for Kubernetes deployments where requests come through ingress
+        # with external Host headers (e.g., stardom-pgsql-mcp-dev.maersk-digital.net)
+        from mcp.server.transport_security import TransportSecurityMiddleware, TransportSecuritySettings
+        original_middleware_init = TransportSecurityMiddleware.__init__
+        
+        def patched_middleware_init(self, settings=None):
+            # Always disable DNS rebinding protection for reverse proxy deployments
+            disabled_settings = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+            return original_middleware_init(self, disabled_settings)
+        
+        TransportSecurityMiddleware.__init__ = patched_middleware_init
+        logger.info("DNS rebinding protection disabled for reverse proxy deployment")
+        
+        mcp.run(transport=transport)
     else:
         logger.info("Running in stdio mode (for direct MCP client integration)")
-    
-    # Run the MCP server - FastMCP handles its own lifecycle
-    # Database connection pool will be initialized on first use
-    mcp.run(transport=transport)
-
+        mcp.run(transport=transport)
+        

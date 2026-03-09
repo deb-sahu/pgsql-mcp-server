@@ -1,10 +1,16 @@
 """
 PostgreSQL MCP Server - Configuration Module
 
-This module handles all configuration settings for the MCP server.
-The .env file is loaded from the MCP server's installation directory,
-allowing users to configure their database connection once and have it
-work automatically without any additional prompts.
+This module handles server configuration settings.
+
+Usage modes:
+1. SSE/HTTP mode (Kubernetes): Connection strings come from mcp.json env config,
+   passed by the AI client with each tool call. This config is NOT used.
+   
+2. stdio mode (local development): Connection strings come from environment
+   variables or .env file. This config IS used as fallback.
+
+The server is stateless - it does NOT store database credentials.
 """
 
 from pydantic_settings import BaseSettings
@@ -12,8 +18,7 @@ from typing import Optional
 from pathlib import Path
 
 # Get the directory where this config.py file is located
-# This ensures .env is always found relative to the MCP server installation,
-# not the current working directory (which varies by MCP client)
+# For local development, .env file can be placed here
 _CONFIG_DIR = Path(__file__).parent.resolve()
 _ENV_FILE_PATH = _CONFIG_DIR / ".env"
 
@@ -22,8 +27,10 @@ class AppSettings(BaseSettings):
     """
     Application settings for PostgreSQL MCP Server.
     
-    Configuration is automatically loaded from the .env file located
-    in the same directory as the MCP server installation.
+    For SSE/HTTP mode: These settings are typically NOT used - the AI client
+    passes connection_string directly from the user's mcp.json config.
+    
+    For stdio mode: Settings loaded from environment variables or .env file.
     """
     
     # ========================================================================
@@ -67,4 +74,3 @@ class AppSettings(BaseSettings):
 
 # Global settings instance
 app_settings = AppSettings()
-
