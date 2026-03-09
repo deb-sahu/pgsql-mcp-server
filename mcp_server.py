@@ -16,11 +16,10 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 from typing import Optional
 import logging
-import os
 
 from db_connection import PostgresConnectionManager
 from pg_tools import PostgresTools
-from config import app_settings
+from config import app_settings, _ENV_FILE_PATH
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,19 +28,47 @@ logger = logging.getLogger(__name__)
 # Initialize MCP server
 mcp = FastMCP("postgres-mcp-server")
 
-# Initialize database manager and tools
-# Connection string can be provided via environment variable or MCP client configuration
-DB_CONNECTION_STRING = os.getenv(
-    "POSTGRES_CONNECTION_STRING",
-    os.getenv("DATABASE_URL", "")
-)
 
-# If connection string is not in URL format, build it from components
-if not DB_CONNECTION_STRING or not DB_CONNECTION_STRING.startswith("postgresql://"):
-    DB_CONNECTION_STRING = (
-        f"postgresql://{app_settings.db_user_name}:{app_settings.db_password}"
-        f"@{app_settings.db_host}:{app_settings.db_port}/{app_settings.db_name}"
+def _build_connection_string() -> str:
+    """
+    Build the database connection string from configuration.
+    
+    The .env file is automatically loaded from the MCP server's directory.
+    
+    Priority order:
+    1. POSTGRES_CONNECTION_STRING from .env (full connection URL)
+    2. DATABASE_URL from .env (common in cloud platforms)
+    3. Individual DB_* components from .env (db_user_name, db_password, etc.)
+    """
+    # Check if .env file exists
+    if not _ENV_FILE_PATH.exists():
+        logger.error(f"Configuration file not found: {_ENV_FILE_PATH}")
+        logger.error("Please create a .env file with your database connection settings.")
+        return ""
+    
+    # First, check if a full connection string is provided
+    if app_settings.effective_connection_string:
+        logger.info("Using connection string from .env file")
+        return app_settings.effective_connection_string
+    
+    # Fall back to building from individual components
+    if app_settings.db_user_name and app_settings.db_name:
+        logger.info("Building connection string from individual DB_* components in .env")
+        return (
+            f"postgresql://{app_settings.db_user_name}:{app_settings.db_password}"
+            f"@{app_settings.db_host}:{app_settings.db_port}/{app_settings.db_name}"
+        )
+    
+    # No configuration found
+    logger.error(
+        f"No database connection configured in {_ENV_FILE_PATH}. "
+        "Set POSTGRES_CONNECTION_STRING, DATABASE_URL, or individual DB_* variables."
     )
+    return ""
+
+
+# Initialize database connection at startup
+DB_CONNECTION_STRING = _build_connection_string()
 
 db_manager = PostgresConnectionManager(DB_CONNECTION_STRING)
 pg_tools = PostgresTools(db_manager)
